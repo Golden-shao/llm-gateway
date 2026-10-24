@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>llm-gateway · OpenAI 兼容的 LLM 网关</title>
+<meta name="description" content="llm-gateway：开源、K8s 原生的 OpenAI 兼容 LLM 网关，统一认证、令牌桶限流、流式透传，一键部署。">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230A0F1E'/%3E%3Ccircle cx='9' cy='16' r='4.5' fill='none' stroke='%2322D3EE' stroke-width='2.5'/%3E%3Ccircle cx='23' cy='16' r='4.5' fill='none' stroke='%237C8CFF' stroke-width='2.5'/%3E%3Cpath d='M13.5 16h5' stroke='%2394A3C0' stroke-width='2'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="https://miaoda.feishu.cn/fonts/css2?family=Space+Grotesk:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700;900&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#0A0F1E; --surface:#0F1730; --card:#111B38; --line:#1F2B4A;
+  --text:#E8EEFA; --muted:#94A3C0; --dim:#6E7FA0;
+  --accent:#22D3EE; --accent2:#7C8CFF; --ok:#34D399; --warn:#F5B04C;
+  --font-sans:"Space Grotesk","Noto Sans SC",system-ui,"Microsoft YaHei",sans-serif;
+  --font-mono:"JetBrains Mono","Cascadia Mono",Consolas,monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:var(--font-sans);font-size:16px;line-height:1.65;-webkit-font-smoothing:antialiased}
+.wrap{width:100%;max-width:1120px;margin:0 auto;padding:0 20px;box-sizing:border-box}
+a{color:var(--accent);text-decoration:none}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+::selection{background:rgba(34,211,238,.25)}
+
+/* ===== 导航 ===== */
+.nav{position:sticky;top:0;z-index:50;background:rgba(10,15,30,.86);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.nav-inner{display:flex;align-items:center;justify-content:space-between;height:60px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:17px;color:var(--text)}
+.brand svg{display:block}
+.nav-links{display:flex;align-items:center;gap:4px}
+.nav-links a{color:var(--muted);font-size:14px;padding:8px 12px;border-radius:8px;transition:color .15s}
+.nav-links a:hover{color:var(--text);background:rgba(148,163,192,.08)}
+.nav-cta{display:inline-flex;align-items:center;gap:8px;background:var(--accent);color:#04121A;font-weight:700;font-size:14px;padding:9px 16px;border-radius:9px;transition:transform .15s}
+.nav-cta:hover{transform:translateY(-1px)}
+@media (max-width:760px){.nav-links{display:none}}
+
+/* ===== Hero ===== */
+.hero{position:relative;overflow:hidden;padding:76px 0 64px}
+.hero::before{content:"";position:absolute;inset:0;background:radial-gradient(600px 340px at 78% -10%,rgba(124,140,255,.14),transparent 70%),radial-gradient(520px 300px at 12% 110%,rgba(34,211,238,.10),transparent 70%);pointer-events:none}
+.dotgrid{position:absolute;inset:0;background-image:radial-gradient(rgba(148,163,192,.14) 1px,transparent 1px);background-size:26px 26px;mask-image:radial-gradient(ellipse 90% 80% at 60% 40%,#000 30%,transparent 75%);pointer-events:none}
+.hero-grid{position:relative;display:grid;grid-template-columns:1fr;gap:40px;align-items:center}
+@media (min-width:900px){.hero-grid{grid-template-columns:1.1fr .9fr;gap:56px}}
+.eyebrow{display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:500;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:6px 14px;margin-bottom:22px}
+.eyebrow .dot{width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 3px rgba(52,211,153,.18);animation:pulse 2.4s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+.hero h1{font-size:clamp(34px,6vw,54px);line-height:1.14;letter-spacing:-.01em;font-weight:700;text-wrap:balance}
+.hero h1 .grad{background:linear-gradient(92deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;color:transparent}
+.hero p.sub{margin-top:20px;font-size:17px;color:var(--muted);max-width:560px}
+.hero-actions{display:flex;flex-wrap:wrap;gap:14px;margin-top:30px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-weight:700;font-size:15px;padding:13px 22px;border-radius:10px;transition:transform .15s,background .15s}
+.btn:hover{transform:translateY(-1px)}
+.btn-primary{background:var(--accent);color:#04121A}
+.btn-ghost{border:1px solid var(--line);color:var(--text);background:transparent}
+.btn-ghost:hover{background:rgba(148,163,192,.08)}
+.chips{display:flex;flex-wrap:wrap;gap:10px;margin-top:34px}
+.chip{font-size:13px;color:var(--muted);border:1px solid var(--line);border-radius:8px;padding:7px 13px;background:rgba(17,27,56,.5)}
+.chip b{color:var(--text);font-weight:600}
+
+/* ===== Hero 请求流转动画 ===== */
+.hero-flow{width:100%;max-width:440px;margin:0 auto}
+.hero-flow svg{width:100%;height:auto;display:block}
+
+/* ===== 区块通用 ===== */
+section{padding:72px 0}
+.sec-head{max-width:640px;margin-bottom:44px}
+.sec-head .k{font-size:13px;font-weight:600;color:var(--accent);letter-spacing:.06em;text-transform:uppercase}
+.sec-head h2{font-size:clamp(26px,4vw,36px);line-height:1.2;margin-top:10px;font-weight:700}
+.sec-head p{margin-top:14px;color:var(--muted);font-size:15.5px}
+
+/* ===== 特性 ===== */
+.features{background:linear-gradient(180deg,transparent,rgba(17,27,56,.35) 12%,rgba(17,27,56,.35) 88%,transparent)}
+.feat-grid{display:grid;grid-template-columns:1fr;gap:14px}
+@media (min-width:560px){.feat-grid{grid-template-columns:repeat(2,1fr)}}
+@media (min-width:1024px){.feat-grid{grid-template-columns:repeat(3,1fr)}}
+.feat{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px 20px;display:flex;flex-direction:column;gap:12px}
+.feat svg{color:var(--accent)}
+.feat h3{font-size:16.5px;font-weight:700}
+.feat p{font-size:14px;color:var(--muted)}
+
+/* ===== 架构 ===== */
+.arch{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:26px 18px;overflow-x:auto}
+.arch svg{width:100%;min-width:560px;height:auto;display:block}
+.arch-cap{font-size:13px;color:var(--dim);text-align:center;margin-top:12px}
+
+/* ===== 快速开始 ===== */
+.tabs{display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap}
+.tab{border:1px solid var(--line);background:transparent;color:var(--muted);font-family:var(--font-sans);font-size:14px;font-weight:600;padding:10px 18px;border-radius:9px;cursor:pointer;transition:all .15s}
+.tab[aria-selected="true"]{background:var(--accent);color:#04121A;border-color:var(--accent)}
+.codeblock{position:relative;background:#060B18;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.codeblock pre{padding:18px 16px 16px;overflow-x:auto;font-family:var(--font-mono);font-size:13px;line-height:1.7;color:#C8D6F0}
+.copy-btn{position:absolute;top:10px;right:10px;border:1px solid var(--line);background:rgba(17,27,56,.9);color:var(--muted);font-size:12.5px;font-weight:600;padding:6px 12px;border-radius:7px;cursor:pointer;font-family:var(--font-sans);transition:all .15s}
+.copy-btn:hover{color:var(--text);border-color:var(--accent)}
+.copy-btn.copied{color:#04121A;background:var(--ok);border-color:var(--ok)}
+.tab-panel{display:none}
+.tab-panel.active{display:block}
+
+/* ===== API / 配置表 ===== */
+.tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--card)}
+table{width:100%;border-collapse:collapse;table-layout:fixed;min-width:560px}
+th,td{text-align:left;padding:12px 16px;font-size:14px;vertical-align:top}
+th{background:rgba(17,27,56,.9);color:var(--muted);font-weight:600;font-size:13px;border-bottom:1px solid var(--line)}
+td{border-bottom:1px solid rgba(31,43,74,.6);color:var(--text)}
+tbody tr:last-child td{border-bottom:none}
+td code,th code{font-family:var(--font-mono);font-size:12.5px;background:rgba(34,211,238,.08);color:var(--accent);padding:2px 6px;border-radius:5px}
+table .num{font-variant-numeric:tabular-nums}
+.method{display:inline-block;font-family:var(--font-mono);font-size:11.5px;font-weight:600;padding:3px 8px;border-radius:5px}
+.m-post{background:rgba(34,211,238,.12);color:var(--accent)}
+.m-get{background:rgba(52,211,153,.12);color:var(--ok)}
+
+/* ===== 路线图（时间轴）===== */
+.roadmap{margin-top:8px}
+.road{display:grid;grid-template-columns:72px 26px 1fr;column-gap:0;row-gap:0}
+@media (max-width:560px){.road{grid-template-columns:58px 20px 1fr}}
+.road .time{grid-column:1;justify-self:end;align-self:center;padding-right:14px;font-size:13px;color:var(--dim);font-variant-numeric:tabular-nums;text-align:right}
+.road .axis{grid-column:2;justify-self:center;position:relative;width:2px;background:var(--line);align-self:stretch}
+.road .axis i{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:11px;height:11px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 4px rgba(34,211,238,.15)}
+.road .content{grid-column:3;align-self:center;padding:18px 0 18px 18px}
+.road .content h3{font-size:15.5px;font-weight:700}
+.road .content p{font-size:13.5px;color:var(--muted);margin-top:3px}
+.road .axis.done{background:linear-gradient(180deg,var(--accent) 0 90%,var(--line) 90%)}
+.road:last-child .axis{background:transparent}
+.road:last-child .axis i{background:var(--warn);box-shadow:0 0 0 4px rgba(245,176,76,.15)}
+
+/* ===== 页脚 ===== */
+.footer{border-top:1px solid var(--line);padding:34px 0 40px}
+.foot-inner{display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:space-between}
+.footer .muted{color:var(--dim);font-size:13.5px}
+.footer a{color:var(--muted)}
+.footer a:hover{color:var(--text)}
+
+/* ===== 噪声纹理 ===== */
+.noise{position:fixed;inset:0;pointer-events:none;opacity:.04;z-index:60;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E")}
+
+@media (prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
+  .eyebrow .dot{animation:none}
+  .hero-flow *{animation:none!important}
+}
+</style>
+</head>
+<body>
+<div class="noise" aria-hidden="true"></div>
+
+<!-- ===== 导航 ===== -->
+<nav class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="#top" aria-label="llm-gateway 首页">
+      <svg width="26" height="26" viewBox="0 0 32 32" fill="none" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#111B38"/><circle cx="9" cy="16" r="4.5" stroke="#22D3EE" stroke-width="2.5"/><circle cx="23" cy="16" r="4.5" stroke="#7C8CFF" stroke-width="2.5"/><path d="M13.5 16h5" stroke="#94A3C0" stroke-width="2"/></svg>
+      llm-gateway
+    </a>
+    <div class="nav-links">
+      <a href="#features">特性</a>
+      <a href="#arch">架构</a>
+      <a href="#quickstart">快速开始</a>
+      <a href="#api">API</a>
+      <a href="#roadmap">路线图</a>
+    </div>
+    <a class="nav-cta" href="https://github.com/Golden-shao/llm-gateway" target="_blank" rel="noopener">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+      GitHub
+    </a>
+  </div>
+</nav>
+
+<!-- ===== Hero ===== -->
+<header class="hero" id="top">
+  <div class="dotgrid" aria-hidden="true"></div>
+  <div class="wrap hero-grid">
+    <div>
+      <div class="eyebrow"><span class="dot"></span> v0.1 · 开源 · MIT License</div>
+      <h1>一个网关，统一你的 <span class="grad">LLM 流量</span></h1>
+      <p class="sub">llm-gateway 是 OpenAI 兼容的 AI 网关：统一认证、令牌桶限流、SSE 流式透传与结构化日志，客户端永不接触你的上游密钥。K8s 原生，一条 Helm 命令部署。</p>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="#quickstart">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M8 6l8 6-8 6V6Z"/></svg>
+          快速开始
+        </a>
+        <a class="btn btn-ghost" href="https://github.com/Golden-shao/llm-gateway" target="_blank" rel="noopener">查看源码</a>
+      </div>
+      <div class="chips">
+        <span class="chip"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#22D3EE" stroke-width="2" aria-hidden="true"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg> <b>统一认证</b> 网关密钥</span>
+        <span class="chip"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#22D3EE" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg> <b>限流</b> 60 RPM 默认</span>
+        <span class="chip"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#22D3EE" stroke-width="2" aria-hidden="true"><path d="M4 12h16M4 6h16M4 18h10"/></svg> <b>流式</b> SSE 透传</span>
+        <span class="chip"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#22D3EE" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M3 9h18M9 3v18"/></svg> <b>K8s</b> Helm + HPA</span>
+      </div>
+    </div>
+    <div class="hero-flow" aria-label="请求流转示意">
+      <svg id="hero-flow-svg" viewBox="0 0 440 300" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <marker id="arr" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+            <path d="M0 0 L8 4 L0 8 Z" fill="#1F2B4A"/>
+          </marker>
+        </defs>
+        <!-- 连线 -->
+        <path d="M118 132 H322" stroke="#1F2B4A" stroke-width="2" marker-end="url(#arr)"/>
+        <path d="M118 180 H322" stroke="#1F2B4A" stroke-width="2" marker-end="url(#arr)"/>
+        <!-- 客户端 -->
+        <rect x="26" y="120" width="92" height="60" rx="12" fill="#111B38" stroke="#94A3C0" stroke-width="1.5"/>
+        <circle cx="44" cy="143" r="6" fill="none" stroke="#22D3EE" stroke-width="2"/>
+        <path d="M39 153 h10 M41 157 h6" stroke="#94A3C0" stroke-width="1.5"/>
+        <text x="52" y="141" fill="#E8EEFA" font-size="13" font-weight="600">客户端</text>
+        <text x="52" y="156" fill="#94A3C0" font-size="10.5">iOS / Web</text>
+        <!-- 网关 -->
+        <rect x="252" y="112" width="150" height="76" rx="12" fill="#0F1730" stroke="#22D3EE" stroke-width="2"/>
+        <circle cx="272" cy="137" r="6" fill="none" stroke="#22D3EE" stroke-width="2"/>
+        <path d="M268 149 h8 M270 154 h4" stroke="#22D3EE" stroke-width="1.5"/>
+        <text x="284" y="141" fill="#E8EEFA" font-size="13" font-weight="700">llm-gateway</text>
+        <text x="284" y="156" fill="#94A3C0" font-size="10.5">认证 → 限流 → 转发</text>
+        <text x="284" y="170" fill="#6E7FA0" font-size="10">stream: true/false</text>
+        <!-- 上游 -->
+        <rect x="380" y="120" width="56" height="60" rx="12" fill="#111B38" stroke="#7C8CFF" stroke-width="1.5"/>
+        <circle cx="404" cy="143" r="7" fill="none" stroke="#7C8CFF" stroke-width="2"/>
+        <text x="408" y="131" fill="#7C8CFF" font-size="9" font-weight="600">LLM</text>
+        <text x="394" y="168" fill="#94A3C0" font-size="10">上游</text>
+        <!-- K8s 底座 -->
+        <rect x="252" y="212" width="150" height="46" rx="10" fill="#111B38" stroke="#1F2B4A" stroke-width="1.5"/>
+        <text x="266" y="231" fill="#94A3C0" font-size="11">Deployment ×N</text>
+        <text x="266" y="246" fill="#6E7FA0" font-size="10">HPA 自动扩缩 · 健康检查</text>
+        <path d="M327 188 v24" stroke="#1F2B4A" stroke-width="1.5" stroke-dasharray="3 4"/>
+        <!-- 运动数据包 -->
+        <circle r="6" fill="#22D3EE">
+          <animateMotion dur="2.6s" repeatCount="indefinite" path="M118 132 H322"/>
+        </circle>
+        <circle r="6" fill="#7C8CFF" opacity=".85">
+          <animateMotion dur="2.6s" repeatCount="indefinite" begin="1.3s" path="M118 132 H322"/>
+        </circle>
+        <circle r="5" fill="#22D3EE" opacity=".6">
+          <animateMotion dur="2.6s" repeatCount="indefinite" begin=".6s" path="M118 180 H322"/>
+        </circle>
+      </svg>
+    </div>
+  </div>
+</header>
+
+<main>
+<!-- ===== 特性 ===== -->
+<section class="features" id="features">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="k">Features</div>
+      <h2>为生产而生的网关，为学习而生的工程</h2>
+      <p>每个特性都对应一个真实的运维场景——这也是一个从零学习 Kubernetes 与 AI 基础设施的完整载体。</p>
+    </div>
+    <div class="feat-grid">
+      <div class="feat">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+        <h3>统一认证</h3>
+        <p>客户端只需携带网关密钥（Bearer），上游真实密钥只存在于服务端，永不泄露给调用方。</p>
+      </div>
+      <div class="feat">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3v18M3 12h18"/><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>
+        <h3>令牌桶限流</h3>
+        <p>按客户端密钥限制每分钟请求数，防滥用、防突刺；跨副本精确限流预留了 Redis 扩展点。</p>
+      </div>
+      <div class="feat">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 12h16M4 6h16M4 18h10"/></svg>
+        <h3>SSE 流式透传</h3>
+        <p>stream: true 的对话请求原样透传事件流，端到端低延迟，与大模型原生输出体验一致。</p>
+      </div>
+      <div class="feat">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 6h16v12H4z"/><path d="M4 6l8 6 8-6M8 20l4-4 4 4"/></svg>
+        <h3>结构化日志</h3>
+        <p>记录时间、客户端哈希、路径、延迟与估算 token——不落盘明文密钥，便于审计与成本分析。</p>
+      </div>
+      <div class="feat">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M3 9h18M9 3v18"/></svg>
+        <h3>K8s 原生部署</h3>
+        <p>Helm Chart 一条命令部署：Deployment、Service、探针、资源限制、HPA 自动扩缩开箱即用。</p>
+      </div>
+      <div class="feat">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M6 8.5v7a2.5 2.5 0 0 0 2.5 2.5H15.5M18 15.5v-7A2.5 2.5 0 0 0 15.5 6H8.5"/></svg>
+        <h3>CI/CD 自动化</h3>
+        <p>GitHub Actions 自动跑测试、构建镜像、推送 GHCR——每次提交都是一次真实的发布演练。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== 架构 ===== -->
+<section id="arch">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="k">Architecture</div>
+      <h2>请求如何穿过网关</h2>
+      <p>客户端只面向网关一个地址；网关完成认证、限流后，用服务端持有的上游密钥发起调用，流式响应原样回传。</p>
+    </div>
+    <div class="arch">
+      <svg viewBox="0 0 880 300" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="llm-gateway 架构示意">
+        <defs>
+          <marker id="a1" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#22D3EE"/></marker>
+          <marker id="a2" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#7C8CFF"/></marker>
+        </defs>
+        <!-- 流 -->
+        <path d="M300 110 H430" stroke="#22D3EE" stroke-width="2" marker-end="url(#a1)"/>
+        <path d="M560 110 H700" stroke="#7C8CFF" stroke-width="2" marker-end="url(#a2)"/>
+        <path d="M700 190 H560" stroke="#1F2B4A" stroke-width="2" stroke-dasharray="5 5" marker-end="url(#a1)"/>
+        <!-- 客户端 -->
+        <rect x="60" y="80" width="240" height="62" rx="14" fill="#111B38" stroke="#94A3C0" stroke-width="1.5"/>
+        <text x="86" y="112" fill="#E8EEFA" font-size="15" font-weight="700">客户端 App</text>
+        <text x="86" y="131" fill="#94A3C0" font-size="11.5">iOS / Web / CLI</text>
+        <text x="86" y="84" fill="#6E7FA0" font-size="10.5">Authorization: Bearer &lt;gateway-key&gt;</text>
+        <!-- 网关 -->
+        <rect x="430" y="68" width="130" height="86" rx="14" fill="#0F1730" stroke="#22D3EE" stroke-width="2"/>
+        <text x="452" y="96" fill="#E8EEFA" font-size="14" font-weight="700">llm-gateway</text>
+        <text x="452" y="116" fill="#94A3C0" font-size="11">认证 · 限流 · 转发</text>
+        <text x="452" y="134" fill="#6E7FA0" font-size="10.5">/v1/chat/completions</text>
+        <!-- 上游 -->
+        <rect x="700" y="80" width="140" height="62" rx="14" fill="#111B38" stroke="#7C8CFF" stroke-width="1.5"/>
+        <text x="726" y="112" fill="#E8EEFA" font-size="15" font-weight="700">上游 LLM</text>
+        <text x="726" y="131" fill="#94A3C0" font-size="11.5">OpenAI 兼容 API</text>
+        <!-- K8s -->
+        <rect x="430" y="196" width="130" height="56" rx="12" fill="#111B38" stroke="#1F2B4A" stroke-width="1.5"/>
+        <text x="452" y="220" fill="#94A3C0" font-size="11.5">Deployment ×N</text>
+        <text x="452" y="237" fill="#6E7FA0" font-size="10.5">HPA 自动扩缩</text>
+        <path d="M495 154 v42" stroke="#1F2B4A" stroke-width="1.5" stroke-dasharray="3 4"/>
+        <!-- 说明块 -->
+        <rect x="610" y="196" width="230" height="56" rx="12" fill="#111B38" stroke="#1F2B4A" stroke-width="1.5"/>
+        <text x="630" y="220" fill="#94A3C0" font-size="11.5">结构化日志 · /v1/models 缓存</text>
+        <text x="630" y="237" fill="#6E7FA0" font-size="10.5">健康检查 /healthz</text>
+        <path d="M610 224 H560" stroke="#1F2B4A" stroke-width="1.5" stroke-dasharray="3 4"/>
+      </svg>
+      <div class="arch-cap">示意：网关是唯一入口，上游密钥只存在于服务端；副本数由 HPA 按 CPU 自动伸缩。</div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== 快速开始 ===== -->
+<section id="quickstart">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="k">Quickstart</div>
+      <h2>五分钟跑起来</h2>
+      <p>选一种方式：本机 Docker 立即可用；或起一个 kind 集群体验完整 K8s 部署。</p>
+    </div>
+    <div class="tabs" role="tablist">
+      <button class="tab" id="tab-docker" role="tab" aria-selected="true" aria-controls="panel-docker">Docker</button>
+      <button class="tab" id="tab-k8s" role="tab" aria-selected="false" aria-controls="panel-k8s">Kubernetes + Helm</button>
+    </div>
+
+    <div class="tab-panel active" id="panel-docker" role="tabpanel" aria-labelledby="tab-docker">
+      <div class="codeblock">
+        <button class="copy-btn" data-copy="docker-cmd">复制</button>
+        <pre id="docker-cmd"># 构建镜像（国内网络可加 --build-arg PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple）
+docker build -t llm-gateway:latest gateway/
+
+# 运行：用你自己的上游密钥替换 sk-your-upstream-key
+docker run -d --name llm-gateway -p 8080:8080 \
+  -e GATEWAY_UPSTREAM_API_KEY=sk-your-upstream-key \
+  -e GATEWAY_GATEWAY_API_KEYS=dev-key \
+  llm-gateway:latest
+
+# 验证
+curl -H "Authorization: Bearer dev-key" http://localhost:8080/v1/models</pre>
+      </div>
+    </div>
+
+    <div class="tab-panel" id="panel-k8s" role="tabpanel" aria-labelledby="tab-k8s">
+      <div class="codeblock">
+        <button class="copy-btn" data-copy="k8s-cmd">复制</button>
+        <pre id="k8s-cmd"># 本地集群
+kind create cluster --name llm-gateway
+
+# 部署（网关密钥与上游密钥通过 Secret 注入）
+helm install llm-gateway deploy/helm/llm-gateway \
+  --set secret.create=true \
+  --set secret.upstreamApiKey=sk-your-upstream-key \
+  --set secret.gatewayApiKeys=dev-key
+
+# 访问
+kubectl port-forward svc/llm-gateway 8080:8080
+curl http://localhost:8080/healthz</pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== API 参考 ===== -->
+<section id="api">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="k">API Reference</div>
+      <h2>接口与配置</h2>
+      <p>接口保持 OpenAI 兼容，客户端代码零改动即可接入。</p>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <colgroup><col style="width:16%"><col style="width:42%"><col style="width:42%"></colgroup>
+        <thead><tr><th>方法</th><th>路径</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td><span class="method m-post">POST</span></td><td><code>/v1/chat/completions</code></td><td>对话补全；请求体含 <code>stream: true</code> 时以 SSE 流式透传返回</td></tr>
+          <tr><td><span class="method m-get">GET</span></td><td><code>/v1/models</code></td><td>上游模型列表（网关侧带 TTL 缓存）</td></tr>
+          <tr><td><span class="method m-get">GET</span></td><td><code>/healthz</code></td><td>存活探针，返回 <code>{"status":"ok"}</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="tbl-wrap" style="margin-top:20px">
+      <table>
+        <colgroup><col style="width:34%"><col style="width:18%"><col style="width:48%"></colgroup>
+        <thead><tr><th>环境变量（前缀 GATEWAY_）</th><th>默认值</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td><code>UPSTREAM_BASE_URL</code></td><td class="num">https://api.openai.com/v1</td><td>上游 OpenAI 兼容地址</td></tr>
+          <tr><td><code>UPSTREAM_API_KEY</code></td><td class="num">（空）</td><td>服务端调用上游的密钥，只存于服务端</td></tr>
+          <tr><td><code>GATEWAY_API_KEYS</code></td><td class="num">（空）</td><td>客户端网关密钥，逗号分隔</td></tr>
+          <tr><td><code>RATE_LIMIT_RPM</code></td><td class="num">60</td><td>每客户端密钥每分钟请求上限</td></tr>
+          <tr><td><code>MODELS_CACHE_TTL</code></td><td class="num">60</td><td>/v1/models 缓存秒数</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ===== 路线图 ===== -->
+<section id="roadmap" style="padding-top:48px">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="k">Roadmap</div>
+      <h2>从一个网关到一整套服务</h2>
+      <p>路线图跟着真实的运维痛点走——这也是你学习 K8s 与 AI 基础设施的成长路径。</p>
+    </div>
+    <div class="roadmap">
+      <div class="road">
+        <div class="time">v0.1 现在</div>
+        <div class="axis done"><i></i></div>
+        <div class="content"><h3>单上游代理 · 核心闭环</h3><p>统一认证、令牌桶限流、SSE 流式透传、结构化日志；Helm 一键部署 + HPA。</p></div>
+      </div>
+      <div class="road">
+        <div class="time">下一阶段</div>
+        <div class="axis done"><i></i></div>
+        <div class="content"><h3>分布式与多上游</h3><p>Redis 跨副本精确限流；按模型/权重把请求路由到多个上游，支持降级与熔断。</p></div>
+      </div>
+      <div class="road">
+        <div class="time">中期</div>
+        <div class="axis"><i></i></div>
+        <div class="content"><h3>成本与可观测</h3><p>请求级缓存、token 用量统计与成本报表；Prometheus 指标 + Grafana 看板。</p></div>
+      </div>
+      <div class="road">
+        <div class="time">远期</div>
+        <div class="axis"><i></i></div>
+        <div class="content"><h3>管理端与控制台</h3><p>Web 控制台与 Flutter 客户端：密钥管理、用量看板、限流规则可视化配置。</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+</main>
+
+<!-- ===== 页脚 ===== -->
+<footer class="footer">
+  <div class="wrap foot-inner">
+    <div class="muted">llm-gateway · FastAPI + Helm + GitHub Actions · <a href="https://github.com/Golden-shao/llm-gateway" target="_blank" rel="noopener">开源在 GitHub</a> · MIT License</div>
+    <div class="muted">© 2026 Golden-shao</div>
+  </div>
+</footer>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ===== Tab 切换 ===== */
+  var tabs = document.querySelectorAll(".tab");
+  var panels = document.querySelectorAll(".tab-panel");
+  tabs.forEach(function(tab){
+    tab.addEventListener("click", function(){
+      var target = tab.getAttribute("aria-controls");
+      tabs.forEach(function(t){ t.setAttribute("aria-selected", t === tab ? "true" : "false"); });
+      panels.forEach(function(p){ p.classList.toggle("active", p.id === target); });
+    });
+  });
+
+  /* ===== 复制命令 ===== */
+  document.querySelectorAll(".copy-btn").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      var id = btn.getAttribute("data-copy");
+      var text = document.getElementById(id).innerText;
+      var done = function(){ btn.textContent = "已复制"; btn.classList.add("copied"); setTimeout(function(){ btn.textContent = "复制"; btn.classList.remove("copied"); }, 1600); };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done).catch(function(){ fallbackCopy(text, done); });
+      } else { fallbackCopy(text, done); }
+    });
+  });
+  function fallbackCopy(text, done){
+    var ta = document.createElement("textarea");
+    ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand("copy"); done(); } catch(e){}
+    document.body.removeChild(ta);
+  }
+
+  /* ===== Hero 动画：离屏暂停 / 尊重 reduced-motion ===== */
+  var svg = document.getElementById("hero-flow-svg");
+  var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (svg && svg.pauseAnimations) {
+    if (reduced) { svg.pauseAnimations(); }
+    else if ("IntersectionObserver" in window) {
+      var io = new IntersectionObserver(function(entries){
+        entries.forEach(function(entry){
+          if (entry.isIntersecting) { svg.unpauseAnimations(); } else { svg.pauseAnimations(); }
+        });
+      }, { threshold: 0.1 });
+      io.observe(svg);
+    }
+  }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,45 @@
+# llm-gateway Helm values
+# 用法：helm install llm-gateway deploy/helm/llm-gateway -f <this>
+
+replicaCount: 2
+
+image:
+  repository: ghcr.io/golden-shao/llm-gateway
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8080
+  targetPort: 8080
+
+# 非敏感配置（写入 ConfigMap）
+config:
+  upstreamBaseUrl: "https://api.openai.com/v1"
+  rateLimitRpm: 60
+  modelsCacheTtl: 60
+
+# 敏感配置：默认放在 values，生产环境请改为 secret.create=true + 已有 Secret
+secret:
+  create: false          # 设为 true 时根据下方两项创建 Secret
+  name: "llm-gateway-secret"  # create=false 时引用的外部 Secret 名
+  upstreamApiKey: ""
+  gatewayApiKeys: "dev-key"
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 60
+
+probes:
+  livenessPath: /healthz
+  readinessPath: /healthz

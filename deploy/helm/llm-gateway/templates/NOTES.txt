@@ -1,0 +1,11 @@
+llm-gateway 已部署到集群。
+
+查看状态：
+  kubectl get pods -l app={{ include "llm-gateway.name" . }}
+
+本地访问（端口转发）：
+  kubectl port-forward svc/{{ include "llm-gateway.fullname" . }} 8080:8080
+  curl http://localhost:8080/healthz
+  curl -H "Authorization: Bearer <gateway-key>" http://localhost:8080/v1/models
+
+提示：生产环境请创建外部 Secret 并设置 secret.create=false、secret.name=<已有Secret>。
